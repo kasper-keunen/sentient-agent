@@ -416,10 +416,163 @@ export class TwitterStoryClient extends ClientBase {
         }
     }
 
+    //     private async enhanceSegmentsWithImagePrompts(
+    //         segments: TweetSegment[],
+    //         context: StoryContext
+    //     ): Promise<TweetSegment[]> {
+    //         const promptContext = composeContext({
+    //             template: twitterStoryImagePromptTemplate,
+    //             state: {
+    //                 roomId: stringToUuid('twitter_story'),
+    //                 actors: '',
+    //                 recentMessages: '',
+    //                 recentMessagesData: [{
+    //                     userId: this.runtime.agentId,
+    //                     agentId: this.runtime.agentId,
+    //                     content: { text: '' },
+    //                     roomId: stringToUuid('twitter_story'),
+    //                     embedding: embeddingZeroVector,
+    //                     createdAt: Date.now()
+    //                 }],
+
+    //                 bio: '',
+    //                 lore: '',
+    //                 messageDirections: '',
+    //                 postDirections: '',
+    //                 providers: '',
+    //                 actions: '',
+
+    //                 characters: context.persistentElements.characters.join(", "),
+    //                 settings: context.persistentElements.settings.join(", "),
+    //                 themes: context.persistentElements.themes.join(", "),
+    //                 style: context.persistentElements.style,
+    //                 segments: segments.map((s, i) => `[${i + 1}] "${s.text}"`).join("\n\n")
+    //             }
+    //         });
+
+    //         elizaLogger.info('Starting image prompt generation for segments', {
+    //             segmentCount: segments.length,
+    //             storyThemes: context.persistentElements.themes
+    //         });
+
+    //         const MAX_RETRIES = 3;
+    //         let attempt = 0;
+
+    //         while (attempt < MAX_RETRIES) {
+    //             try {
+    //                 // Create a single context containing all segments
+    //                 const promptContext = `# Task: Create cohesive image generation prompts for a story thread
+
+    // Story Context:
+    // Characters: ${context.persistentElements.characters.join(", ")}
+    // Settings: ${context.persistentElements.settings.join(", ")}
+    // Themes: ${context.persistentElements.themes.join(", ")}
+    // Style: ${context.persistentElements.style}
+
+    // Narrator: You are LoomLove, The narrator of this story. You take the form of a bulky,swagged out, buff, male, bipedal-polar bear. Swagged out like a suited up church going uncle. Like you've got that drip on. 
+
+
+    // Story Thread Segments:
+    // ${segments.map((s, i) => `[${i + 1}] "${s.text}"`).join("\n\n")}
+
+    // Create a series of detailed, cohesive image prompts that:
+    // 1. Flow together visually as a consistent narrative
+    // 2. Maintain character appearances and setting details throughout
+    // 3. Build on the visual elements established in previous images
+    // 4. Share a consistent artistic style and mood, explicitly state the style in each prompt.
+    // 5. Are optimized for image generation
+
+    // IMPORTANT: Response must be a JSON object with EXACTLY this structure:
+    // {
+    //     "prompts": [
+    //         "Detailed prompt for segment 1...",
+    //         "Detailed prompt for segment 2...",
+    //         // etc...
+    //     ]
+    // }`;
+
+    //                 const response = await generateText({
+    //                     runtime: this.runtime,
+    //                     context: promptContext,
+    //                     modelClass: ModelClass.LARGE,
+    //                 });
+
+    //                 // Clean the response: remove markdown code blocks and any extra whitespace
+    //                 const cleanedResponse = response
+    //                     .replace(/```(?:json)?\n?/g, '')  // Remove code blocks
+    //                     .replace(/\n\s*\n/g, '\n')        // Remove extra newlines
+    //                     .trim();
+
+    //                 let parsed;
+    //                 try {
+    //                     parsed = JSON.parse(cleanedResponse);
+    //                 } catch (parseError) {
+    //                     // Try to extract JSON from the string if direct parsing fails
+    //                     const jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/);
+    //                     if (jsonMatch) {
+    //                         parsed = JSON.parse(jsonMatch[0]);
+    //                     } else {
+    //                         throw parseError;
+    //                     }
+    //                 }
+
+    //                 if (!Array.isArray(parsed.prompts)) {
+    //                     throw new Error('Response does not contain prompts array');
+    //                 }
+
+    //                 if (parsed.prompts.length !== segments.length) {
+    //                     elizaLogger.warn('Prompt count mismatch', {
+    //                         expected: segments.length,
+    //                         received: parsed.prompts.length,
+    //                         attempt: attempt + 1
+    //                     });
+    //                     throw new Error('Prompt count mismatch');
+    //                 }
+
+    //                 elizaLogger.debug('Generated cohesive image prompts', {
+    //                     promptCount: parsed.prompts.length,
+    //                     samplePrompt: parsed.prompts[0].substring(0, 100) + '...'
+    //                 });
+
+    //                 return segments.map((segment, index) => ({
+    //                     ...segment,
+    //                     imagePrompt: parsed.prompts[index]
+    //                 }));
+
+    //             } catch (error) {
+    //                 attempt++;
+    //                 elizaLogger.warn('Failed to parse image prompts, attempt ${attempt}/${MAX_RETRIES}', {
+    //                     error: error instanceof Error ? error.message : String(error),
+    //                     attempt,
+    //                     maxRetries: MAX_RETRIES
+    //                 });
+
+    //                 if (attempt === MAX_RETRIES) {
+    //                     elizaLogger.error('All attempts to parse image prompts failed', {
+    //                         error: error instanceof Error ? error.message : String(error)
+    //                     });
+    //                     // Return segments without image prompts as fallback
+    //                     return segments;
+    //                 }
+
+    //                 // Wait before retrying (with exponential backoff)
+    //                 await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+    //             }
+    //         }
+
+    //         // Typescript needs this even though it's unreachable
+    //         return segments;
+    //     }
+
     private async enhanceSegmentsWithImagePrompts(
         segments: TweetSegment[],
         context: StoryContext
     ): Promise<TweetSegment[]> {
+        // Fetch recent stories (if needed) to populate recentStories in the template
+        const recentStories = await this.runtime.messageManager.getMemoriesByRoomIds({
+            roomIds: [stringToUuid('twitter')]
+        });
+
         const promptContext = composeContext({
             template: twitterStoryImagePromptTemplate,
             state: {
@@ -435,17 +588,23 @@ export class TwitterStoryClient extends ClientBase {
                     createdAt: Date.now()
                 }],
 
-                bio: '',
-                lore: '',
+                // Include all fields just like in twitterStoryGenerationTemplate
+                // Replace any empty fields with actual data if available
+                bio: this.runtime.character.lore.join(", "),
+                lore: this.runtime.character.lore.join(", "),
                 messageDirections: '',
                 postDirections: '',
                 providers: '',
                 actions: '',
+                topics: this.runtime.character.topics.join(", "),
+                adjectives: this.runtime.character.adjectives.join(", "),
+                style: this.runtime.character.style,
+                postExamples: this.runtime.character.postExamples.join("\n"),
+                recentStories: recentStories.map(m => m.content.summary).join(", "),
 
                 characters: context.persistentElements.characters.join(", "),
                 settings: context.persistentElements.settings.join(", "),
                 themes: context.persistentElements.themes.join(", "),
-                style: context.persistentElements.style,
                 segments: segments.map((s, i) => `[${i + 1}] "${s.text}"`).join("\n\n")
             }
         });
@@ -460,54 +619,23 @@ export class TwitterStoryClient extends ClientBase {
 
         while (attempt < MAX_RETRIES) {
             try {
-                // Create a single context containing all segments
-                const promptContext = `# Task: Create cohesive image generation prompts for a story thread
-
-Story Context:
-Characters: ${context.persistentElements.characters.join(", ")}
-Settings: ${context.persistentElements.settings.join(", ")}
-Themes: ${context.persistentElements.themes.join(", ")}
-Style: ${context.persistentElements.style}
-
-Narrator: You are LoomLove, The narrator of this story. You take the form of a bulky,swagged out, buff, male, bipedal-polar bear. Swagged out like a suited up church going uncle. Like you've got that drip on. 
-
-
-Story Thread Segments:
-${segments.map((s, i) => `[${i + 1}] "${s.text}"`).join("\n\n")}
-
-Create a series of detailed, cohesive image prompts that:
-1. Flow together visually as a consistent narrative
-2. Maintain character appearances and setting details throughout
-3. Build on the visual elements established in previous images
-4. Share a consistent artistic style and mood, explicitly state the style in each prompt.
-5. Are optimized for image generation
-
-IMPORTANT: Response must be a JSON object with EXACTLY this structure:
-{
-    "prompts": [
-        "Detailed prompt for segment 1...",
-        "Detailed prompt for segment 2...",
-        // etc...
-    ]
-}`;
-
                 const response = await generateText({
                     runtime: this.runtime,
                     context: promptContext,
                     modelClass: ModelClass.LARGE,
                 });
 
-                // Clean the response: remove markdown code blocks and any extra whitespace
+                // Clean the response: remove markdown code blocks and extra whitespace
                 const cleanedResponse = response
-                    .replace(/```(?:json)?\n?/g, '')  // Remove code blocks
-                    .replace(/\n\s*\n/g, '\n')        // Remove extra newlines
+                    .replace(/```(?:json)?\n?/g, '')
+                    .replace(/\n\s*\n/g, '\n')
                     .trim();
 
                 let parsed;
                 try {
                     parsed = JSON.parse(cleanedResponse);
                 } catch (parseError) {
-                    // Try to extract JSON from the string if direct parsing fails
+                    // Try to extract JSON if direct parsing fails
                     const jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/);
                     if (jsonMatch) {
                         parsed = JSON.parse(jsonMatch[0]);
@@ -541,7 +669,7 @@ IMPORTANT: Response must be a JSON object with EXACTLY this structure:
 
             } catch (error) {
                 attempt++;
-                elizaLogger.warn('Failed to parse image prompts, attempt ${attempt}/${MAX_RETRIES}', {
+                elizaLogger.warn(`Failed to parse image prompts, attempt ${attempt}/${MAX_RETRIES}`, {
                     error: error instanceof Error ? error.message : String(error),
                     attempt,
                     maxRetries: MAX_RETRIES
@@ -560,7 +688,7 @@ IMPORTANT: Response must be a JSON object with EXACTLY this structure:
             }
         }
 
-        // Typescript needs this even though it's unreachable
+        // Should never reach here due to return statements above
         return segments;
     }
 
