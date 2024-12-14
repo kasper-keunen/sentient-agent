@@ -14,36 +14,18 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import ImageDescriptionService from "../../../../services/image";
+import { 
+    telegramImagePromptTemplate,
+    telegramQualityCheckPrompt,
+    telegramShouldGeneratePrompt 
+} from "../../../clientTexts.ts";
 
-const QUALITY_CHECK_PROMPT = `# Task: Evaluate Image Quality
-
-Analyze this image and determine if it meets high quality standards for social media sharing.
-
-Consider:
-- Overall composition and aesthetics
-- Clarity and sharpness
-- Artistic value
-- Appropriate content
-- Visual appeal
-
-Respond only with "SHARE" or "SKIP" based on if the image meets these criteria.`;
-
-const SHOULD_GENERATE_PROMPT = `# Task: Determine if image generation is appropriate
-
-Analyze the user's message and decide if generating an image would be helpful or necessary. Only generate an image if the user has explicitly asked for an image to be generated.
-
-Consider:
-- Is the user explicitly requesting an image?
-- Would an image enhance the response significantly?
-- Is the topic something that can be meaningfully visualized?
-
-Respond only with "GENERATE" or "SKIP" followed by a suggested text response.
-Format: <GENERATE|SKIP>||<response text>
-
-Example 1:
-User: "Can you make me a picture of a sunset?"
-Response:
-`;
+// Re-export for backward compatibility
+export { 
+    telegramImagePromptTemplate,
+    telegramQualityCheckPrompt,
+    telegramShouldGeneratePrompt 
+};
 
 const postToTwitter = async (runtime: IAgentRuntime, imagePath: string, promptText: string) => {
     try {
@@ -122,16 +104,7 @@ export const telegramImageGeneration: Action = {
             elizaLogger.log("Original prompt:", imagePrompt);
 
             try {
-                const context = `# Task: Enhance the image generation prompt
-Your task is to enhance the user's request into a detailed prompt that will generate the best possible image.
-
-# Instructions
-- Focus on artistic style, mood, lighting, composition and important details
-- Keep the final prompt under 200 characters
-- If the request is to "generate anything", you have creative control
-- Only respond with the enhanced prompt text, no other commentary
-
-Original request: ${message.content.text}`;
+                const context = telegramImagePromptTemplate.replace('{{text}}', message.content.text);
 
                 const promptResponse = await generateText({
                     runtime,
@@ -170,7 +143,7 @@ Original request: ${message.content.text}`;
                         
                         const shouldShare = await generateText({
                             runtime,
-                            context: `${QUALITY_CHECK_PROMPT}\n\nImage Analysis:\n${qualityCheck.description}\n\nDecision:`,
+                            context: telegramQualityCheckPrompt + `\n\nImage Analysis:\n${qualityCheck.description}\n\nDecision:`,
                             modelClass: ModelClass.MEDIUM,
                         });
 

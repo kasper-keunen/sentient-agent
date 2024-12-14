@@ -1,28 +1,16 @@
 import { composeContext } from "../core/context.ts";
 import { generateTrueOrFalse } from "../core/generation.ts";
-import { booleanFooter } from "../core/parsing.ts";
 import {
     Action,
-    ActionExample,
     IAgentRuntime,
     Memory,
     ModelClass,
     State,
 } from "../core/types.ts";
+import { shouldUnmuteTemplate, unmuteRoomExamples } from "../promptsTexts.ts";
 
-export const shouldUnmuteTemplate =
-    `Based on the conversation so far:
-
-{{recentMessages}}  
-
-Should {{agentName}} unmute this previously muted room and start considering it for responses again?
-Respond with YES if:  
-- The user has explicitly asked {{agentName}} to start responding again
-- The user seems to want to re-engage with {{agentName}} in a respectful manner
-- The tone of the conversation has improved and {{agentName}}'s input would be welcome
-
-Otherwise, respond with NO.
-` + booleanFooter;
+// Re-export for backward compatibility
+export { shouldUnmuteTemplate };
 
 export const unmuteRoom: Action = {
     name: "UNMUTE_ROOM",
@@ -46,7 +34,7 @@ export const unmuteRoom: Action = {
         async function _shouldUnmute(state: State): Promise<boolean> {
             const shouldUnmuteContext = composeContext({
                 state,
-                template: shouldUnmuteTemplate, // Define this template separately
+                template: shouldUnmuteTemplate,
             });
 
             const response = generateTrueOrFalse({
@@ -68,93 +56,5 @@ export const unmuteRoom: Action = {
             );
         }
     },
-    examples: [
-        [
-            {
-                user: "{{user1}}",
-                content: {
-                    text: "{{user3}}, you can unmute this channel now",
-                },
-            },
-            {
-                user: "{{user3}}",
-                content: {
-                    text: "Done",
-                    action: "UNMUTE_ROOM",
-                },
-            },
-            {
-                user: "{{user2}}",
-                content: {
-                    text: "I could use some help troubleshooting this bug.",
-                },
-            },
-            {
-                user: "{{user3}}",
-                content: {
-                    text: "Can you post the specific error message",
-                },
-            },
-        ],
-        [
-            {
-                user: "{{user1}}",
-                content: {
-                    text: "{{user2}}, please unmute this room. We could use your input again.",
-                },
-            },
-            {
-                user: "{{user2}}",
-                content: {
-                    text: "Sounds good",
-                    action: "UNMUTE_ROOM",
-                },
-            },
-        ],
-        [
-            {
-                user: "{{user1}}",
-                content: {
-                    text: "{{user2}} wait you should come back and chat in here",
-                },
-            },
-            {
-                user: "{{user2}}",
-                content: {
-                    text: "im back",
-                    action: "UNMUTE_ROOM",
-                },
-            },
-        ],
-        [
-            {
-                user: "{{user1}}",
-                content: {
-                    text: "unmute urself {{user2}}",
-                },
-            },
-            {
-                user: "{{user2}}",
-                content: {
-                    text: "unmuted",
-                    action: "UNMUTE_ROOM",
-                },
-            },
-        ],
-        [
-            {
-                user: "{{user1}}",
-                content: {
-                    text: "ay {{user2}} get back in here",
-                },
-            },
-            {
-                user: "{{user2}}",
-                content: {
-                    text: "sup yall",
-                    action: "UNMUTE_ROOM",
-                },
-            },
-        ],
-    ] as ActionExample[][],
+    examples: unmuteRoomExamples,
 } as Action;

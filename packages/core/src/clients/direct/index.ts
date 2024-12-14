@@ -8,39 +8,15 @@ import {
 } from "../../actions/imageGenerationUtils.ts";
 import { composeContext } from "../../core/context.ts";
 import { generateMessageResponse } from "../../core/generation.ts";
-import { messageCompletionFooter } from "../../core/parsing.ts";
 import { AgentRuntime } from "../../core/runtime.ts";
 import { Content, Memory, ModelClass, State } from "../../core/types.ts";
 import { stringToUuid } from "../../core/uuid.ts";
+import { directMessageHandlerTemplate } from "../clientTexts.ts";
+
+// Re-export for backward compatibility
+export { directMessageHandlerTemplate };
 
 const upload = multer({ storage: multer.memoryStorage() });
-
-export const messageHandlerTemplate =
-    // {{goals}}
-    `# Action Examples
-{{actionExamples}}
-(Action examples are for reference only. Do not use the information from them in your response.)
-
-# Task: Generate dialog and actions for the character {{agentName}}.
-About {{agentName}}:
-{{bio}}
-{{lore}}
-
-{{providers}}
-
-{{attachments}}
-
-# Capabilities
-Note that {{agentName}} is capable of reading/seeing/hearing various forms of media, including images, videos, audio, plaintext and PDFs. Recent attachments have been included above under the "Attachments" section.
-
-{{messageDirections}}
-
-{{recentMessages}}
-
-{{actions}}
-
-# Instructions: Write the next message for {{agentName}}. Ignore "action".
-` + messageCompletionFooter;
 
 export interface SimliClientConfig {
     apiKey: string;
@@ -49,6 +25,7 @@ export interface SimliClientConfig {
     videoRef: any;
     audioRef: any;
 }
+
 class DirectClient {
     private app: express.Application;
     private agents: Map<string, AgentRuntime>;
@@ -187,7 +164,7 @@ class DirectClient {
 
                 const context = composeContext({
                     state,
-                    template: messageHandlerTemplate,
+                    template: directMessageHandlerTemplate,
                 });
 
                 const response = await generateMessageResponse({

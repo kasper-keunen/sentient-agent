@@ -5,7 +5,6 @@ import {
     generateMessageResponse,
     generateText,
 } from "../../core/generation.ts";
-import { messageCompletionFooter } from "../../core/parsing.ts";
 import {
     Content,
     HandlerCallback,
@@ -18,36 +17,10 @@ import { stringToUuid } from "../../core/uuid.ts";
 import { ClientBase } from "./base.ts";
 import { buildConversationThread, sendTweet, wait } from "./utils.ts";
 import { elizaLogger } from "../../index.ts";
+import { twitterSearchTemplate } from "../clientTexts.ts";
 
-const twitterSearchTemplate =
-    `{{relevantFacts}}
-{{recentFacts}}
-
-{{timeline}}
-
-{{providers}}
-
-Recent interactions between {{agentName}} and other users:
-{{recentPostInteractions}}
-
-About {{agentName}} (@{{twitterUserName}}):
-{{bio}}
-{{lore}}
-{{topics}}
-
-{{postDirections}}
-
-{{recentPosts}}
-
-# Task: Respond to the following post in the style and perspective of {{agentName}} (aka @{{twitterUserName}}). Write a {{adjective}} response for {{agentName}} to say directly in response to the post. don't generalize.
-{{currentPost}}
-
-IMPORTANT: Your response CANNOT be longer than 20 words.
-Aim for 1-2 short sentences maximum. Be concise and direct.
-
-Your response should not contain any questions. Brief, concise statements only. No emojis. Use \\n\\n (double spaces) between statements.
-
-` + messageCompletionFooter;
+// Re-export for backward compatibility
+export { twitterSearchTemplate };
 
 export class TwitterSearchClient extends ClientBase {
     private respondedTweets: Set<string> = new Set();

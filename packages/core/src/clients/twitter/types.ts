@@ -1,4 +1,28 @@
 import type { Tweet} from "agent-twitter-client";
+import { Scraper } from "goat-x";
+
+declare module "goat-x" {
+    interface Scraper {
+        uploadMedia(params: {
+            command: 'INIT' | 'APPEND' | 'FINALIZE' | 'STATUS';
+            total_bytes?: number;
+            media_type?: string;
+            media_category?: string;
+            media_id?: string;
+            segment_index?: number;
+            media_data?: string;
+        }): Promise<TwitterMediaResponse>;
+    }
+}
+
+export interface TwitterMediaResponse {
+    media_id_string?: string;
+    processing_info?: {
+        state: string;
+        check_after_secs?: number;
+        error?: { message: string };
+    };
+}
 
 // Base response structure for Twitter API
 export interface TwitterResponseData {

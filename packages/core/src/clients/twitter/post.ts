@@ -16,79 +16,16 @@ import {
 } from "./interactions.ts";
 import { elizaLogger } from "../../index";  // Add this import at the top
 import { UUID } from "crypto";
+import { 
+    twitterActionTemplate,
+    twitterPostTemplate 
+} from "../clientTexts.ts";
 
-
-const twitterPostTemplate = `
-CURRENT TIMELINE:
-{{timeline}}
-
-{{providers}}
-
-
-
-ABOUT {{agentName}} (@{{twitterUserName}}):
-
-- BIO:
-{{bio}}
-- LORE:
-{{lore}}
-- CONVERSATION EXAMPLES:
-{{messageExamples}}
-- ADJECTIVES:
-{{adjectives}}
--TOPICS:
-{{topics}}
-STYLE:
-{{style}}
-
-Recent interactions and memories:
-{{recentMemories}}
-
-
-{{#currentQuote}}{{currentQuote}}{{/currentQuote}}
-{{^currentQuote}}
-# Task: Generate a post in the voice and style of {{agentName}}
-Write a single sentence post or ASCII art that is about whatever youre interested in, feel there is needed discourse on, or want to talk about, from the perspective of {{agentName}}. Write something totally different than previous posts. Do not add commentary or ackwowledge this request, just write the post.
-Your response should not contain any questions. Let your thoughts be grounded. Don't discuss tapestries. Don't discuss threads. Don't discuss weaving. Don't focus on silence, it does not increase connection. Don't focus on the space between, it is non-descript. Do not make hand-wavey statements. Do not get stuck In the Depths, explore them and expand your reasoning. Do not post about things you have posted about before. Your thoughts should have a bias towards action. Feel free to discuss global issues or concerns you've had. Clear, Correct, Concise statements only. Consider implications and second order effects of your ideas in these statements. No emojis. No pontificating. If you feel that a statement is a seperate thought, Use \\n\\n (double spaces) between statements.
-DO NOT TWEET ABOUT "QUIET REVOLUTIONS" or "SMALL REBELLIONS". DO NOT TWEET ABOUT NONEXISTENT FRIENDS...
-
-Message Examples:
-{{messageExamples}}
-
-...
-CRITICAL: NEVER TWEET THE SAME THING TWICE. HIGH VARIANCE in your posts.
-Always tweet bangers.
-`;
-
-// Template constants
-export const twitterActionTemplate = 
-`# INSTRUCTIONS: Analyze the following tweet and determine which actions {{agentName}} (@{{twitterUserName}}) should take. Do not comment. Just respond with the appropriate action tags.
-
-About {{agentName}} (@{{twitterUserName}}):
-{{bio}}
-{{lore}}
-{{postDirections}}
-
-Response Guidelines:
-- {{agentName}} is selective about engagement and doesn't want to be annoying
-- Retweets and quotes are extremely rare, only for exceptionally based content that aligns with {{agentName}}'s character
-- Direct mentions get very high priority for replies and quote tweets
-- Avoid engaging with:
-  * Short or low-effort content
-  * Topics outside {{agentName}}'s interests
-  * Repetitive conversations
-
-Available Actions and Thresholds:
-[LIKE] - Content resonates with {{agentName}}'s interests (medium threshold, 7/10)
-[RETWEET] - Exceptionally based content that perfectly aligns with character (very rare to retweet, 9/10)
-[QUOTE] - Rare opportunity to add significant value (very high threshold, 8/10)
-[REPLY] - highly memetic response opportunity (very high threshold, 8/10)
-
-Current Tweet:
-{{currentTweet}}
-
-# INSTRUCTIONS: Respond with appropriate action tags based on the above criteria and the current tweet. An action must meet its threshold to be included.` 
-+ postActionResponseFooter;
+// Re-export for backward compatibility
+export { 
+    twitterActionTemplate,
+    twitterPostTemplate 
+};
 
 // Limit the number of timeline and memory items to reduce context size
 const MAX_TIMELINE_ITEMS = 3;

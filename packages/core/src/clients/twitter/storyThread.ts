@@ -1,7 +1,8 @@
-import { 
-    IAgentRuntime, 
-    Memory, 
-    ModelClass, 
+import {
+    IAgentRuntime,
+    Memory,
+    ModelClass,
+    State,
 } from "../../core/types";
 import { generateText } from "../../core/generation";
 import { generateImage } from "../../actions/imageGenerationUtils";
@@ -13,6 +14,13 @@ import * as fs from 'fs';
 import * as fsPromises from 'fs/promises';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import { TwitterMediaResponse } from "./types";
+import { composeContext } from "../../core/context";
+import {
+    twitterStorySegmentTemplate,
+    twitterStoryImagePromptTemplate,
+    twitterStoryGenerationTemplate
+} from "../clientTexts.ts";
 
 //import { processTwitterResponse } from './types';
 
@@ -103,18 +111,39 @@ interface TweetSegment {
 //     };
 // }
 
-interface TwitterMediaResponse {
-    media_id_string: string;
-    expires_after_secs?: number;
-    processing_info?: {
-        state: 'pending' | 'in_progress' | 'failed' | 'succeeded';
-        check_after_secs?: number;
-        progress_percent?: number;
-        error?: {
-            code: number;
-            message: string;
-        };
-    };
+// Add type for template state
+interface StoryGenerationState extends State {
+    roomId: `${string}-${string}-${string}-${string}-${string}`;
+    actors: string;
+    recentMessages: string;
+    recentMessagesData: Memory[];
+    system: string;
+    lore: string;
+    topics: string;
+    adjectives: string;
+    style: string;
+    postExamples: string;
+    recentStories: string;
+}
+
+interface StorySegmentState extends State {
+    roomId: `${string}-${string}-${string}-${string}-${string}`;
+    actors: string;
+    recentMessages: string;
+    recentMessagesData: Memory[];
+    story: string;
+}
+
+interface ImagePromptState extends State {
+    roomId: `${string}-${string}-${string}-${string}-${string}`;
+    actors: string;
+    recentMessages: string;
+    recentMessagesData: Memory[];
+    characters: string;
+    settings: string;
+    themes: string;
+    style: string;
+    segments: string;
 }
 
 export class TwitterStoryClient extends ClientBase {
@@ -122,7 +151,7 @@ export class TwitterStoryClient extends ClientBase {
         super({ runtime });
     }
 
-    onReady(): void {
+    async onReady(): Promise<void> {
         const generateStoryLoop = () => {
             this.generateStory();
             setTimeout(
@@ -136,89 +165,89 @@ export class TwitterStoryClient extends ClientBase {
     private async generateStory(): Promise<StoryContext> {
         try {
             const storyContext = await this.generateStoryContext();
-            
+
             if (!storyContext.story || !storyContext.persistentElements) {
                 throw new Error('Missing required story elements');
             }
 
             // Save story to memory
             await this.saveStoryToMemory(storyContext);
-        elizaLogger.info('Story saved to memory');
+            elizaLogger.info('Story saved to memory');
 
-        // Generate tweet segments and enhance with image prompts
-        elizaLogger.info('Segmenting story into tweets...');
-        const segments = await this.segmentIntoTweets(storyContext);
-        elizaLogger.info(`Story segmented into ${segments.length} tweets`);
-       
-        //Image Prompts!!!
-        elizaLogger.info('Enhancing segments with image prompts...');
-        const enhancedSegments = await this.enhanceSegmentsWithImagePrompts(segments, storyContext);
-        elizaLogger.info(`Generated ${enhancedSegments.length} image prompts`);
-       
-        ///Actually Generate Images!!!
-        elizaLogger.info('Generating images from prompts...');
-        const segmentsWithImages = await this.generateImagesForSegments(enhancedSegments);
-        elizaLogger.info(`Generated images for ${segmentsWithImages.filter(s => s.imageUrl).length} segments`);
+            // Generate tweet segments and enhance with image prompts
+            elizaLogger.info('Segmenting story into tweets...');
+            const segments = await this.segmentIntoTweets(storyContext);
+            elizaLogger.info(`Story segmented into ${segments.length} tweets`);
 
-        // Upload images to Twitter and get media IDs
-        elizaLogger.info('Beginning image upload process...');
-        for (const segment of enhancedSegments) {
-            if (segment.imageUrl) {
-                elizaLogger.debug('Processing image:', {
-                    imageUrl: segment.imageUrl,
-                    tweetText: segment.text.substring(0, 50) + '...'
-                });
+            //Image Prompts!!!
+            elizaLogger.info('Enhancing segments with image prompts...');
+            const enhancedSegments = await this.enhanceSegmentsWithImagePrompts(segments, storyContext);
+            elizaLogger.info(`Generated ${enhancedSegments.length} image prompts`);
 
-                try {
-                    const buffer = fs.readFileSync(segment.imageUrl);
-                    const mediaData = buffer.toString('base64');
-                    
-                    const response = await this.uploadMedia({
-                        command: 'INIT',
-                        total_bytes: buffer.length,
-                        media_type: 'image/png',
-                        media_category: 'tweet_image',
-                        media_data: mediaData
+            ///Actually Generate Images!!!
+            elizaLogger.info('Generating images from prompts...');
+            const segmentsWithImages = await this.generateImagesForSegments(enhancedSegments);
+            elizaLogger.info(`Generated images for ${segmentsWithImages.filter(s => s.imageUrl).length} segments`);
+
+            // Upload images to Twitter and get media IDs
+            elizaLogger.info('Beginning image upload process...');
+            for (const segment of enhancedSegments) {
+                if (segment.imageUrl) {
+                    elizaLogger.debug('Processing image:', {
+                        imageUrl: segment.imageUrl,
+                        tweetText: segment.text.substring(0, 50) + '...'
                     });
-                    
-                    if (!response?.media_id_string) {
-                        throw new Error('Failed to get media_id from upload response');
+
+                    try {
+                        const buffer = fs.readFileSync(segment.imageUrl);
+                        const mediaData = buffer.toString('base64');
+
+                        const response = await this.uploadMediaToTwitter({
+                            command: 'INIT',
+                            total_bytes: buffer.length,
+                            media_type: 'image/png',
+                            media_category: 'tweet_image',
+                            media_data: mediaData
+                        });
+
+                        if (!response?.media_id_string) {
+                            throw new Error('Failed to get media_id from upload response');
+                        }
+
+                        segment.mediaId = response.media_id_string;
+
+                        elizaLogger.info('Image uploaded successfully', {
+                            mediaId: segment.mediaId,
+                            response: response
+                        });
+                    } catch (error) {
+                        elizaLogger.error('Error uploading media to Twitter:', error);
                     }
-
-                    segment.mediaId = response.media_id_string;
-                    
-                    elizaLogger.info('Image uploaded successfully', {
-                        mediaId: segment.mediaId,
-                        response: response
-                    });
-                } catch (error) {
-                    elizaLogger.error('Error uploading media to Twitter:', error);
                 }
             }
+
+            // Post the story thread
+            elizaLogger.info('Posting story thread...');
+            await this.postStoryThread(enhancedSegments);
+
+            elizaLogger.info('Story generation and posting completed successfully', {
+                storyLength: storyContext.story.length,
+                elements: Object.keys(storyContext.persistentElements),
+                totalSegments: enhancedSegments.length,
+                segmentsWithImages: enhancedSegments.filter(s => s.mediaId).length
+            });
+
+            return storyContext;
+
+        } catch (error) {
+            elizaLogger.error('Story generation failed', {
+                error: error instanceof Error ? error.message : String(error),
+                type: error instanceof Error ? error.constructor.name : typeof error,
+                stack: error instanceof Error ? error.stack : undefined
+            });
+            throw error;
         }
-
-        // Post the story thread
-        elizaLogger.info('Posting story thread...');
-        await this.postStoryThread(enhancedSegments);
-
-        elizaLogger.info('Story generation and posting completed successfully', {
-            storyLength: storyContext.story.length,
-            elements: Object.keys(storyContext.persistentElements),
-            totalSegments: enhancedSegments.length,
-            segmentsWithImages: enhancedSegments.filter(s => s.mediaId).length
-        });
-
-        return storyContext;
-
-    } catch (error) {
-        elizaLogger.error('Story generation failed', {
-            error: error instanceof Error ? error.message : String(error),
-            type: error instanceof Error ? error.constructor.name : typeof error,
-            stack: error instanceof Error ? error.stack : undefined
-        });
-        throw error;
     }
-}
 
     private async generateStoryContext(): Promise<StoryContext> {
         try {
@@ -228,54 +257,43 @@ export class TwitterStoryClient extends ClientBase {
 
             elizaLogger.info("Recent stories fetched:", recentStories.length);
 
-            const promptTemplate = `# Task: Generate a story prompt for ${this.runtime.character.name}
+            const context = composeContext({
+                template: twitterStoryGenerationTemplate,
+                state: {
+                    roomId: stringToUuid('twitter_story'),
+                    actors: '',
+                    recentMessages: '',
+                    recentMessagesData: [{
+                        userId: this.runtime.agentId,
+                        agentId: this.runtime.agentId,
+                        content: { text: '' },
+                        roomId: stringToUuid('twitter_story'),
+                        embedding: embeddingZeroVector,
+                        createdAt: Date.now()
+                    }],
 
-Character Details:
-${this.runtime.character.system}
-${this.runtime.character.lore}
-You are LoomLove, The narrator of this story. You take the form of a bulky,swagged out, buff, male, bipedal-polar bear. Swagged out like a suited up church going uncle. Like you've got that drip on. 
-Topics of Interest:
-${this.runtime.character.topics.join(", ")}
+                    bio: this.runtime.character.lore.join(", "),
+                    lore: this.runtime.character.lore.join(", "),
+                    messageDirections: '',
+                    postDirections: '',
+                    providers: '',
+                    actions: '',
 
-Personality:
-${this.runtime.character.adjectives.join(", ")}
+                    system: this.runtime.character.system,
+                    topics: this.runtime.character.topics.join(", "),
+                    adjectives: this.runtime.character.adjectives.join(", "),
+                    style: this.runtime.character.style,
+                    postExamples: this.runtime.character.postExamples.join("\n"),
+                    recentStories: recentStories.map(m => m.content.summary).join(", ")
+                }
+            });
 
-Writing Style:
-${this.runtime.character.style}
-
-Example Posts:
-${this.runtime.character.postExamples.join("\n")}
-
-Recent Story Themes: ${recentStories.map(m => m.content.summary).join(", ")}
-
-Create a compelling story that:
-1. Reflects the character's unique perspective and writing style
-2. Incorporates their topics of interest naturally
-3. Has high narrative entropy (unexpected but logical developments)
-4. Remains accessible and engaging 
-5. Can be told in under 4000 characters
-6. Would be interesting to share on Twitter
-7. Plays off ideas from the example posts
-8. Builds worlds that can be continuously explored.
-9. Is not the same as any Recent Stories
-
-
-IMPORTANT: Response must be a JSON object with EXACTLY this structure:
-{
-    "story": "The full story text goes here",
-    "persistentElements": {
-        "characters": ["character names"],
-        "settings": ["setting descriptions"],
-        "themes": ["theme descriptions"],
-        "style": "style description"
-    }
-}`;
             const retries = 3;
             for (let i = 0; i < retries; i++) {
                 try {
                     const response = await generateText({
                         runtime: this.runtime,
-                        context: promptTemplate,
+                        context,
                         modelClass: ModelClass.LARGE,
                     });
 
@@ -286,23 +304,23 @@ IMPORTANT: Response must be a JSON object with EXACTLY this structure:
                         .replace(/```(?:json)?\n|\n```/g, '')
                         .replace(/^.*?({[\s\S]*}).*?$/, '$1')
                         .trim();
-                    
+
                     try {
                         const parsed = JSON.parse(cleanResponse);
-                        
+
                         // More detailed validation
                         if (!parsed || typeof parsed !== 'object') {
                             throw new Error('Response is not an object');
                         }
-                        
+
                         if (!parsed.story || typeof parsed.story !== 'string') {
                             throw new Error('Missing or invalid story field');
                         }
-                        
+
                         if (!parsed.persistentElements || typeof parsed.persistentElements !== 'object') {
                             throw new Error('Missing or invalid persistentElements');
                         }
-                        
+
                         const required = ['characters', 'settings', 'themes', 'style'];
                         for (const field of required) {
                             if (!parsed.persistentElements[field]) {
@@ -319,11 +337,11 @@ IMPORTANT: Response must be a JSON object with EXACTLY this structure:
                             raw: response,
                             cleaned: cleanResponse
                         });
-                        
+
                         if (i === retries - 1) {
                             throw jsonError;
                         }
-                        
+
                         // Add a small delay before retry
                         await new Promise(resolve => setTimeout(resolve, 1000));
                     }
@@ -335,11 +353,11 @@ IMPORTANT: Response must be a JSON object with EXACTLY this structure:
                         type: error instanceof Error ? error.constructor.name : typeof error,
                         stack: error instanceof Error ? error.stack : undefined
                     });
-                    
+
                     if (i === retries - 1) {
                         throw error;
                     }
-                    
+
                     // Add a small delay before retry
                     await new Promise(resolve => setTimeout(resolve, 1000));
                 }
@@ -358,28 +376,35 @@ IMPORTANT: Response must be a JSON object with EXACTLY this structure:
     }
 
     private async segmentIntoTweets(storyContext: StoryContext): Promise<TweetSegment[]> {
-        const segmentPrompt = `# Task: Break this story into tweet-sized segments
+        const context = composeContext({
+            template: twitterStorySegmentTemplate,
+            state: {
+                roomId: stringToUuid('twitter_story'),
+                actors: '',
+                recentMessages: '',
+                recentMessagesData: [{
+                    userId: this.runtime.agentId,
+                    agentId: this.runtime.agentId,
+                    content: { text: '' },
+                    roomId: stringToUuid('twitter_story'),
+                    embedding: embeddingZeroVector,
+                    createdAt: Date.now()
+                }],
 
-Story: "${storyContext.story}"
+                bio: '',
+                lore: '',
+                messageDirections: '',
+                postDirections: '',
+                providers: '',
+                actions: '',
 
-Requirements:
-- Split the story into multiple segments.
-- Do not change the story.
-- Each segment must be under 280 characters
-- Each segment should be meaningful and engaging on its own
-- Do not add any commentary to the segments.
-- Do not add any commentary to the output.
-- Format as JSON array of segments
-
-IMPORTANT: Response must be a JSON object with EXACTLY this structure:
-[
-    { "text": "tweet text" },
-    { "text": "tweet text" }
-]`;
+                story: storyContext.story
+            }
+        });
 
         const response = await generateText({
             runtime: this.runtime,
-            context: segmentPrompt,
+            context,
             modelClass: ModelClass.LARGE,
         });
 
@@ -395,6 +420,36 @@ IMPORTANT: Response must be a JSON object with EXACTLY this structure:
         segments: TweetSegment[],
         context: StoryContext
     ): Promise<TweetSegment[]> {
+        const promptContext = composeContext({
+            template: twitterStoryImagePromptTemplate,
+            state: {
+                roomId: stringToUuid('twitter_story'),
+                actors: '',
+                recentMessages: '',
+                recentMessagesData: [{
+                    userId: this.runtime.agentId,
+                    agentId: this.runtime.agentId,
+                    content: { text: '' },
+                    roomId: stringToUuid('twitter_story'),
+                    embedding: embeddingZeroVector,
+                    createdAt: Date.now()
+                }],
+
+                bio: '',
+                lore: '',
+                messageDirections: '',
+                postDirections: '',
+                providers: '',
+                actions: '',
+
+                characters: context.persistentElements.characters.join(", "),
+                settings: context.persistentElements.settings.join(", "),
+                themes: context.persistentElements.themes.join(", "),
+                style: context.persistentElements.style,
+                segments: segments.map((s, i) => `[${i + 1}] "${s.text}"`).join("\n\n")
+            }
+        });
+
         elizaLogger.info('Starting image prompt generation for segments', {
             segmentCount: segments.length,
             storyThemes: context.persistentElements.themes
@@ -514,10 +569,10 @@ IMPORTANT: Response must be a JSON object with EXACTLY this structure:
             totalSegments: segments.length,
             segmentsWithPrompts: segments.filter(s => s.imagePrompt).length
         });
-        
+
         const finalSegments: TweetSegment[] = [];
         const cachePath = path.join(process.cwd(), "imagecache");
-        
+
         try {
             // Create cache directory if it doesn't exist
             if (!fs.existsSync(cachePath)) {
@@ -528,11 +583,7 @@ IMPORTANT: Response must be a JSON object with EXACTLY this structure:
             for (const segment of segments) {
                 try {
                     if (segment.imagePrompt) {
-                        elizaLogger.info("Generating image for segment", {
-                            text: segment.text.substring(0, 100) + '...',
-                            prompt: segment.imagePrompt.substring(0, 100) + '...'
-                        });
-                        
+                        elizaLogger.debug("Processing segment with image prompt");
                         const imageResult = await generateImage(
                             {
                                 prompt: segment.imagePrompt,
@@ -543,65 +594,50 @@ IMPORTANT: Response must be a JSON object with EXACTLY this structure:
                             this.runtime
                         );
 
-                        elizaLogger.debug("Image generation result", {
-                            success: imageResult.success,
-                            hasData: !!imageResult.data?.[0]
-                        });
-
                         if (imageResult.success && imageResult.data?.[0]) {
-                            try {
-                                // Create a unique filename based on the image URL
-                                const imageUrl = imageResult.data[0];
-                                const imageHash = crypto.createHash('md5').update(imageUrl).digest('hex');
-                                const cacheFile = path.join(cachePath, `${imageHash}.png`);
-                                
-                                let imageBuffer: ArrayBuffer;
+                            // Create a unique filename based on the image URL
+                            const imageUrl = imageResult.data[0];
+                            const imageHash = crypto.createHash('md5').update(imageUrl).digest('hex');
+                            const cacheFile = path.join(cachePath, `${imageHash}.png`);
 
-                                // Check if image exists in cache
-                                if (fs.existsSync(cacheFile)) {
-                                    elizaLogger.debug("Using cached image", { path: cacheFile });
-                                    const fileBuffer = fs.readFileSync(cacheFile);
-                                    const tempBuffer = fileBuffer.buffer.slice(
-                                        fileBuffer.byteOffset,
-                                        fileBuffer.byteOffset + fileBuffer.byteLength
-                                    );
-                                    if (tempBuffer instanceof SharedArrayBuffer) {
-                                        throw new Error('SharedArrayBuffer not supported');
-                                    }
-                                    imageBuffer = tempBuffer;
-                                } else {
-                                    // Download and cache the image
-                                    elizaLogger.debug("Downloading and caching new image", { url: imageUrl });
-                                    const imageResponse = await fetch(imageUrl);
-                                    const tempBuffer = await imageResponse.arrayBuffer();
-                                    if (tempBuffer instanceof SharedArrayBuffer) {
-                                        throw new Error('SharedArrayBuffer not supported');
-                                    }
-                                    imageBuffer = tempBuffer;
-                                    fs.writeFileSync(cacheFile, Buffer.from(imageBuffer));
-                                    elizaLogger.debug("Cached new image", { path: cacheFile });
+                            let imageBuffer: ArrayBuffer;
+
+                            // Check if image exists in cache
+                            if (fs.existsSync(cacheFile)) {
+                                elizaLogger.debug("Using cached image", { path: cacheFile });
+                                const fileBuffer = fs.readFileSync(cacheFile);
+                                const tempBuffer = fileBuffer.buffer.slice(
+                                    fileBuffer.byteOffset,
+                                    fileBuffer.byteOffset + fileBuffer.byteLength
+                                );
+                                if (tempBuffer instanceof SharedArrayBuffer) {
+                                    throw new Error('SharedArrayBuffer not supported');
                                 }
-
-                                // Upload to Twitter using chunked upload
-                                elizaLogger.debug("Uploading image to Twitter");
-                                const mediaId = await this.uploadImageToTwitter(imageBuffer);
-                                elizaLogger.info("Image uploaded successfully", { mediaId });
-
-                                finalSegments.push({
-                                    ...segment,
-                                    imageUrl: imageUrl,
-                                    mediaId: mediaId
-                                });
-                            } catch (error) {
-                                elizaLogger.error("Error uploading media to Twitter", {
-                                    error: error instanceof Error ? error.message : String(error)
-                                });
-                                finalSegments.push(segment);
+                                imageBuffer = tempBuffer;
+                            } else {
+                                // Download and cache the image
+                                elizaLogger.debug("Downloading and caching new image", { url: imageUrl });
+                                const imageResponse = await fetch(imageUrl);
+                                const tempBuffer = await imageResponse.arrayBuffer();
+                                if (tempBuffer instanceof SharedArrayBuffer) {
+                                    throw new Error('SharedArrayBuffer not supported');
+                                }
+                                imageBuffer = tempBuffer;
+                                fs.writeFileSync(cacheFile, Buffer.from(imageBuffer));
+                                elizaLogger.debug("Cached new image", { path: cacheFile });
                             }
-                        } else {
-                            elizaLogger.error("Failed to generate image for segment", {
-                                text: segment.text.substring(0, 100) + '...'
+
+                            // Upload to Twitter using chunked upload
+                            elizaLogger.debug("Uploading image to Twitter");
+                            const mediaId = await this.uploadImageToTwitter(imageBuffer);
+                            elizaLogger.info("Image uploaded successfully", { mediaId });
+
+                            finalSegments.push({
+                                ...segment,
+                                imageUrl: imageUrl,
+                                mediaId: mediaId
                             });
+                        } else {
                             finalSegments.push(segment);
                         }
                     } else {
@@ -617,18 +653,19 @@ IMPORTANT: Response must be a JSON object with EXACTLY this structure:
                     finalSegments.push(segment);
                 }
             }
+
+            elizaLogger.info("Completed image generation", {
+                totalProcessed: finalSegments.length,
+                withImages: finalSegments.filter(s => s.imageUrl).length
+            });
+
+            return finalSegments;
         } catch (err) {
             elizaLogger.error("Fatal error in generateImagesForSegments", {
                 error: err instanceof Error ? err.message : String(err)
             });
+            return finalSegments;
         }
-
-        elizaLogger.info("Completed image generation", {
-            totalProcessed: finalSegments.length,
-            withImages: finalSegments.filter(s => s.imageUrl).length
-        });
-        
-        return finalSegments;
     }
 
     private async postStoryThread(segments: TweetSegment[]): Promise<void> {
@@ -678,7 +715,7 @@ IMPORTANT: Response must be a JSON object with EXACTLY this structure:
 
     private async saveStoryToMemory(storyContext: StoryContext) {
         const roomId = stringToUuid('twitter');
-        
+
         elizaLogger.debug('Attempting to save story to memory', {
             storyLength: storyContext.story.length,
             persistentElements: Object.keys(storyContext.persistentElements),
@@ -692,7 +729,7 @@ IMPORTANT: Response must be a JSON object with EXACTLY this structure:
                 elizaLogger.info('Creating twitter room');
                 // First create the room
                 await this.runtime.databaseAdapter.createRoom(roomId);
-                
+
                 // Then add the current user as a participant
                 await this.runtime.databaseAdapter.addParticipant(
                     this.runtime.character.id,
@@ -739,7 +776,7 @@ IMPORTANT: Response must be a JSON object with EXACTLY this structure:
     }
 
 
-    
+
     private async generateStorySummary(storyContext: StoryContext): Promise<string> {
         const summaryPrompt = `# Task: Create a brief summary of this story
 
@@ -799,7 +836,7 @@ Respond with only the summary text.`;
                 const mediaId = body.data?.create_tweet?.tweet_results?.result?.legacy?.entities?.media?.[0]?.id_str;
 
                 // Cleanup temp file
-                await fsPromises.unlink(tempFileName).catch(err => 
+                await fsPromises.unlink(tempFileName).catch(err =>
                     elizaLogger.error("Error cleaning up temp file:", err)
                 );
 
@@ -820,7 +857,7 @@ Respond with only the summary text.`;
         let retries = 0;
 
         while (retries < MAX_RETRIES) {
-            const response = await this.uploadMedia({
+            const response = await this.uploadMediaToTwitter({
                 command: 'STATUS',
                 media_id: mediaId
             });

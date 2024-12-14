@@ -19,8 +19,12 @@ import {
 } from "../../core/types.ts";
 import { stringToUuid } from "../../core/uuid.ts";
 import { ClientBase } from "./base.ts";
-import {  sendTweet, wait } from "./utils.ts";
+import { sendTweet, wait } from "./utils.ts";
 import { embeddingZeroVector } from "../../core/memory.ts";
+import { twitterShouldRespondTemplate } from "../clientTexts.ts";
+
+// Re-export for backward compatibility
+export { twitterShouldRespondTemplate };
 
 export const createInitialConversationContext = (tweet: Tweet) => {
     const timestamp = new Date(tweet.timestamp * 1000).toLocaleString('en-US', {
@@ -98,37 +102,6 @@ IMPORTANT - Current Conversation Context:
 Always tweet bangers.
 
 ` + messageCompletionFooter;
-
-export const twitterShouldRespondTemplate =
-    `# INSTRUCTIONS: Determine if {{agentName}} (@{{twitterUserName}}) should respond to the message and participate in the conversation. Do not comment. Just respond with "true" or "false".
-
-Response options are RESPOND, IGNORE and STOP.
-
-{{agentName}} should respond to messages that are directed at them, or participate in conversations that are interesting or relevant to their background, IGNORE messages that are irrelevant to them, and should STOP if the conversation is concluded. {{agentName}} should also STOP if the thread has gone on for too long.
-
-{{agentName}} is in a room with other users and wants to be conversational, but not annoying.
-{{agentName}} should RESPOND to messages that are directed at them, or participate in conversations that are interesting or relevant to their background.
-If a message is not interesting or relevant, {{agentName}} should IGNORE.
-Unless directly RESPONDing to a user, {{agentName}} should IGNORE messages that are very short or do not contain much information.
-If a user asks {{agentName}} to stop talking, {{agentName}} should STOP.
-If {{agentName}} concludes a conversation and isn't part of the conversation anymore, {{agentName}} should STOP.
-If the conversation thread has more than 5 replies, {{agentName}} should STOP to avoid long threads.
-
-{{recentPosts}}
-
-IMPORTANT: {{agentName}} (aka @{{twitterUserName}}) is particularly sensitive about being annoying, so if there is any doubt, it is better to IGNORE than to RESPOND.
-
-
-{{currentPost}}
-
-Thread of Tweets You Are Replying To:
-
-{{formattedConversation}}
-
-...
-CRITICAL: To reduce response frequency, {{agentName}} should respond [IGNORE] to 70% of messages that would normally warrant a response.
-# INSTRUCTIONS: Respond with [RESPOND] if {{agentName}} should respond, or [IGNORE] if {{agentName}} should not respond to the last message and [STOP] if {{agentName}} should stop participating in the conversation. Do not provide rationale. Only respond with RESPOND, IGNORE, or STOP.
-` + shouldRespondFooter;
 
 export class TwitterInteractionClient extends ClientBase {
     async onReady() {
@@ -313,7 +286,7 @@ export class TwitterInteractionClient extends ClientBase {
                 .split(/[.!?]/)
                 .filter(point => point.trim())
                 .map(point => point.trim());
-                
+
             return `TWEET TO RESPOND TO:
             From: ${tweet.name} (@${tweet.username}) at ${timestamp}
             Content: "${tweet.text}"
@@ -325,15 +298,15 @@ export class TwitterInteractionClient extends ClientBase {
         };
 
         const isFirstResponse = thread.length === 1;
-        
+
         // Add check for replies to our tweets
         if (isFirstResponse && tweet.inReplyToStatusId) {
             // Check if the tweet they're replying to was from us
-            const isReplyingToUs = thread.some(t => 
-                t.id === tweet.inReplyToStatusId && 
+            const isReplyingToUs = thread.some(t =>
+                t.id === tweet.inReplyToStatusId &&
                 t.username === this.runtime.getSetting("TWITTER_USERNAME")
             );
-            
+
             if (isReplyingToUs && Math.random() < 0.5) {
                 console.log("Randomly skipping first reply to our tweet (50/50 chance)");
                 return { text: "Response Decision: Random IGNORE (First Reply)", action: "IGNORE" };
@@ -341,10 +314,10 @@ export class TwitterInteractionClient extends ClientBase {
         }
 
         const currentPost = formatTweet(tweet);
-        
+
         // Create conversation context based on whether it's first response
-        const conversationContext = isFirstResponse ? 
-            createInitialConversationContext(tweet) : 
+        const conversationContext = isFirstResponse ?
+            createInitialConversationContext(tweet) :
             {
                 currentPost,
                 formattedConversation: thread
@@ -378,10 +351,10 @@ export class TwitterInteractionClient extends ClientBase {
                     url: tweet.permanentUrl,
                     inReplyTo: tweet.inReplyToStatusId
                         ? stringToUuid(
-                              tweet.inReplyToStatusId +
-                                  "-" +
-                                  this.runtime.agentId
-                          )
+                            tweet.inReplyToStatusId +
+                            "-" +
+                            this.runtime.agentId
+                        )
                         : undefined,
                 },
                 userId: userIdUUID,
@@ -571,10 +544,10 @@ export class TwitterInteractionClient extends ClientBase {
                         url: currentTweet.permanentUrl,
                         inReplyTo: currentTweet.inReplyToStatusId
                             ? stringToUuid(
-                                  currentTweet.inReplyToStatusId +
-                                      "-" +
-                                      this.runtime.agentId
-                              )
+                                currentTweet.inReplyToStatusId +
+                                "-" +
+                                this.runtime.agentId
+                            )
                             : undefined,
                     },
                     createdAt: currentTweet.timestamp * 1000,

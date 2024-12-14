@@ -7,6 +7,10 @@ import {
 } from "../core/types.ts";
 import { elizaLogger } from "../index.ts";
 import { generateCaption, generateImage } from "./imageGenerationUtils.ts";
+import { imageGenerationExamples } from "../promptsTexts.ts";
+
+// Re-export for backward compatibility
+export { imageGenerationExamples };
 
 export const imageGeneration: Action = {
     name: "GENERATE_IMAGE",
@@ -14,12 +18,8 @@ export const imageGeneration: Action = {
     description: "Generate an image to go along with the message.",
     validate: async (runtime: IAgentRuntime, message: Memory) => {
         // TODO: Abstract this to an image provider thing
-
         const anthropicApiKeyOk = !!runtime.getSetting("ANTHROPIC_API_KEY");
         const togetherApiKeyOk = !!runtime.getSetting("TOGETHER_API_KEY");
-
-        // TODO: Add openai DALL-E generation as well
-
         return anthropicApiKeyOk && togetherApiKeyOk;
     },
     handler: async (
@@ -95,73 +95,5 @@ export const imageGeneration: Action = {
             elizaLogger.error("Image generation failed or returned no data.");
         }
     },
-    examples: [
-        // TODO: We want to generate images in more abstract ways, not just when asked to generate an image
-
-        [
-            {
-                user: "{{user1}}",
-                content: { text: "Generate an image of a cat" },
-            },
-            {
-                user: "{{agentName}}",
-                content: {
-                    text: "Here's an image of a cat",
-                    action: "GENERATE_IMAGE",
-                },
-            },
-        ],
-        [
-            {
-                user: "{{user1}}",
-                content: { text: "Generate an image of a dog" },
-            },
-            {
-                user: "{{agentName}}",
-                content: {
-                    text: "Here's an image of a dog",
-                    action: "GENERATE_IMAGE",
-                },
-            },
-        ],
-        [
-            {
-                user: "{{user1}}",
-                content: { text: "Create an image of a cat with a hat" },
-            },
-            {
-                user: "{{agentName}}",
-                content: {
-                    text: "Here's an image of a cat with a hat",
-                    action: "GENERATE_IMAGE",
-                },
-            },
-        ],
-        [
-            {
-                user: "{{user1}}",
-                content: { text: "Make an image of a dog with a hat" },
-            },
-            {
-                user: "{{agentName}}",
-                content: {
-                    text: "Here's an image of a dog with a hat",
-                    action: "GENERATE_IMAGE",
-                },
-            },
-        ],
-        [
-            {
-                user: "{{user1}}",
-                content: { text: "Paint an image of a cat with a hat" },
-            },
-            {
-                user: "{{agentName}}",
-                content: {
-                    text: "Here's an image of a cat with a hat",
-                    action: "GENERATE_IMAGE",
-                },
-            },
-        ],
-    ],
+    examples: imageGenerationExamples,
 } as Action;
